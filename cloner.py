@@ -1,4 +1,6 @@
 import asyncio
+import datetime
+from unicodedata import mirrored
 
 import discord
 
@@ -23,63 +25,80 @@ class ServerCloner:
         @self.client.event
         async def on_ready():
             print(f'> 👤 | Logged in as {self.client.user}')
+            start_time = datetime.datetime.now()
             self.original_guild = self.client.get_guild(self.original_guild_id)
             self.new_guild = self.client.get_guild(self.new_guild_id)
             task_clean_emojis = asyncio.create_task(self.clean_emojis())
             task_clone_emojis = asyncio.create_task(self.clone_emojis())
+            task_clean_roles = asyncio.create_task(self.clean_roles())
+            task_clean_channels = asyncio.create_task(self.clean_channels())
 
             def _log_task_exc(t):
                 try:
                     t.result()
                 except Exception as e:
-                    print(f'Emoji task error: {e}')
+                    print(f'> ⚠️ | Task error: {e}')
 
+            await self.disable_community()
             task_clean_emojis.add_done_callback(_log_task_exc)
             task_clone_emojis.add_done_callback(_log_task_exc)
+            task_clean_roles.add_done_callback(_log_task_exc)
+            task_clean_channels.add_done_callback(_log_task_exc)
             await self.edit_guild_icon()
             await self.edit_guild_banner()
-            await self.disable_community()
-            await self.clean_roles()
             await self.clone_roles()
-            await self.clean_channels()
             await self.clone_categories()
             await self.clone_text_channels()
             await self.clone_voice_channels()
             await self.edit_guild_settings()
             await self.enable_community()
+            await self.convert_channels_to_news()
             if self.is_community:
                 await self.clone_forum_channels()
                 await self.clone_stage_channels()
             print('> ✅ | Server Cloned Successfully')
+            t = int((datetime.datetime.now() - start_time).total_seconds())
+            m, s = divmod(t, 60)
+            print(f'> 🕘 | Time Used: {m}m {s}s')
             print('> ↩️️ | Logging out')
             await self.client.close()
-        self.client.run(self.token)
+        self.client.run(self.token, log_level=None)
 
     async def edit_guild_icon(self, retries: int = 3):
+        success = False
         for _ in range(retries):
             icon = self.original_guild.icon
             if icon is not None:
                 icon = await icon.read()
             try:
                 await self.new_guild.edit(icon=icon)
+                success = True
                 break
             except Exception as e:
                 await asyncio.sleep(1)
                 continue
-        print(f'> 🖼️ | Guild Icon Edited')
+        if success:
+            print(f'> 🖼️ | Guild Icon Edited')
+        else:
+            print(f'> ⚠️ | Failed to edit Guild Icon')
 
     async def edit_guild_banner(self, retries: int = 3):
+        success = False
         for _ in range(retries):
             banner = self.original_guild.banner
             if banner is not None:
                 banner = await banner.read()
             try:
-                await self.new_guild.edit(icon=banner)
+                await self.new_guild.edit(banner=banner)
+                success = True
                 break
             except Exception as e:
                 await asyncio.sleep(1)
                 continue
-        print(f'> 🌆 | Guild Banner Edited')
+        if success:
+            print(f'> 🌆 | Guild Banner Edited')
+        else:
+            print(f'> ⚠️ | Failed to edit Guild Banner')
 
     async def edit_guild_settings(self):
         afk_channel = None
@@ -112,7 +131,6 @@ class ServerCloner:
             self.is_community = True
             rules_channel = None
             public_updates_channel = None
-            safety_alerts_channel = None
             if self.original_guild.rules_channel is not None:
                 rules_channel = self.mirror_channels[self.original_guild.rules_channel]
             if self.original_guild.public_updates_channel is not None:
@@ -192,6 +210,13 @@ class ServerCloner:
             self.mirror_channels[channel] = cloned_channel
             await asyncio.sleep(self.copy_interval)
 
+    async def convert_channels_to_news(self):
+        print(f'> 🧬 | Converting News Channels')
+        for channel in self.original_guild.text_channels:
+            if channel.is_news():
+                await self.mirror_channels[channel].edit(type=discord.ChannelType.news)
+                print(f'- ➕ | Channel Converted to News: {channel.name}')
+
     async def clone_category(self, category):
         cloned_category = await self.new_guild.create_category(name=category.name, overwrites=category.overwrites)
         await self.__set_overwrites_for_channel(category, cloned_category)
@@ -202,7 +227,6 @@ class ServerCloner:
         category = self.__get_channel_category(channel)
         cloned_channel = await self.new_guild.create_text_channel(channel.name, category=category,
                                                                    position=channel.position,
-                                                                   news=channel.is_news(),
                                                                    nsfw=channel.is_nsfw(), topic=channel.topic,
                                                                    slowmode_delay=channel.slowmode_delay,
                                                                    default_auto_archive_duration=channel.default_auto_archive_duration,
