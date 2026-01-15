@@ -39,6 +39,7 @@ class ServerCloner:
                 except Exception as e:
                     print(f'> ⚠️ | Task error: {e}')
 
+            await self.edit_guild_settings()
             await self.disable_community()
             task_clean_emojis.add_done_callback(_log_task_exc)
             task_clone_emojis.add_done_callback(_log_task_exc)
@@ -50,19 +51,24 @@ class ServerCloner:
             await self.clone_categories()
             await self.clone_text_channels()
             await self.clone_voice_channels()
-            await self.edit_guild_settings()
+            await self.edit_guild_channel_settings()
             await self.enable_community()
             await self.convert_channels_to_news()
             if self.is_community:
                 await self.clone_forum_channels()
                 await self.clone_stage_channels()
+            print()
+            print()
             print('> ✅ | Server Cloned Successfully')
             t = int((datetime.datetime.now() - start_time).total_seconds())
             m, s = divmod(t, 60)
             print(f'> 🕘 | Time Used: {m}m {s}s')
             print('> ↩️️ | Logging out')
-            await self.client.close()
-        self.client.run(self.token, log_level=None)
+            try:
+                await self.client.close()
+            except Exception as e:
+                pass
+        self.client.run(self.token)
 
     async def edit_guild_icon(self, retries: int = 3):
         success = False
@@ -101,26 +107,29 @@ class ServerCloner:
             print(f'> ⚠️ | Failed to edit Guild Banner')
 
     async def edit_guild_settings(self):
+        await self.new_guild.edit(name=self.original_guild.name,
+                                  description=self.original_guild.description,
+                                  afk_timeout=self.original_guild.afk_timeout,
+                                  verification_level=self.original_guild.verification_level,
+                                  explicit_content_filter=self.original_guild.explicit_content_filter,
+                                  splash=self.original_guild.splash,
+                                  default_notifications=self.original_guild.default_notifications,
+                                  system_channel_flags=self.original_guild.system_channel_flags,
+                                  preferred_locale=self.original_guild.preferred_locale,
+                                  premium_progress_bar_enabled=self.original_guild.premium_progress_bar_enabled,
+                                  )
+        print(f'> ⚙️ | Guild Settings Edited')
+
+    async def edit_guild_channel_settings(self):
         afk_channel = None
         if self.original_guild.afk_channel is not None:
             afk_channel = self.mirror_channels[self.original_guild.afk_channel]
         system_channel = None
         if self.original_guild.system_channel is not None:
             system_channel = self.mirror_channels[self.original_guild.system_channel]
-        await self.new_guild.edit(name=self.original_guild.name,
-                                  description=self.original_guild.description,
-                                  afk_channel=afk_channel,
-                                  afk_timeout=self.original_guild.afk_timeout,
-                                  verification_level=self.original_guild.verification_level,
-                                  explicit_content_filter=self.original_guild.explicit_content_filter,
-                                  splash=self.original_guild.splash,
-                                  default_notifications=self.original_guild.default_notifications,
-                                  system_channel=system_channel,
-                                  system_channel_flags=self.original_guild.system_channel_flags,
-                                  preferred_locale=self.original_guild.preferred_locale,
-                                  premium_progress_bar_enabled=self.original_guild.premium_progress_bar_enabled,
-                                  )
-        print(f'> ⚙️ | Guild Settings Edited')
+        await self.new_guild.edit(afk_channel=afk_channel,
+                                  system_channel=system_channel)
+        print(f'> ⚙️ | Guild Channel Settings Edited')
 
     async def disable_community(self):
         await self.new_guild.edit(community=False)
@@ -239,7 +248,7 @@ class ServerCloner:
         category = self.__get_channel_category(channel)
         cloned_channel = await self.new_guild.create_voice_channel(channel.name, category=category,
                                                                    position=channel.position,
-                                                                   bitrate=channel.bitrate,
+                                                                   bitrate=channel.bitrate if channel.bitrate <= 96000 else 96000,
                                                                    user_limit=channel.user_limit, rtc_region=channel.rtc_region,
                                                                    video_quality_mode=channel.video_quality_mode)
         await self.__set_overwrites_for_channel(channel, cloned_channel)
@@ -273,7 +282,7 @@ class ServerCloner:
         category = self.__get_channel_category(channel)
         cloned_channel = await self.new_guild.create_stage_channel(channel.name, category=category,
                                                                    position=channel.position,
-                                                                   bitrate=channel.bitrate,
+                                                                   bitrate=channel.bitrate if channel.bitrate <= 96000 else 96000,
                                                                    user_limit=channel.user_limit, rtc_region=channel.rtc_region,
                                                                    video_quality_mode=channel.video_quality_mode)
         await self.__set_overwrites_for_channel(channel, cloned_channel)
@@ -285,7 +294,7 @@ class ServerCloner:
         for emoji in self.new_guild.emojis:
             await emoji.delete()
             print(f'- ❌ | Emoji deleted: {emoji.name}')
-            await asyncio.sleep(self.copy_interval * 4)
+            # await asyncio.sleep(self.copy_interval * 4)
 
     async def clone_emojis(self):
         print(f'> 🧬 | Cloning Emojis')
