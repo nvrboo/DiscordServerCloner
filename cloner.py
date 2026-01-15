@@ -116,12 +116,9 @@ class ServerCloner:
                 rules_channel = self.mirror_channels[self.original_guild.rules_channel]
             if self.original_guild.public_updates_channel is not None:
                 public_updates_channel = self.mirror_channels[self.original_guild.public_updates_channel]
-            if self.original_guild.safety_alerts_channel is not None:
-                safety_alerts_channel = self.mirror_channels[self.original_guild.safety_alerts_channel]
             await self.new_guild.edit(community=True,
                                       rules_channel=rules_channel,
-                                      public_updates_channel=public_updates_channel,
-                                      safety_alerts_channel=safety_alerts_channel)
+                                      public_updates_channel=public_updates_channel)
             print(f'> ⚙️ | Community Enabled')
 
     async def clean_roles(self):
