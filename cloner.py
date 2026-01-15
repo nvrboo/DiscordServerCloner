@@ -22,7 +22,7 @@ class ServerCloner:
 
         @self.client.event
         async def on_ready():
-            print(f'> Logged in as {self.client.user}')
+            print(f'> 👤 | Logged in as {self.client.user}')
             self.original_guild = self.client.get_guild(self.original_guild_id)
             self.new_guild = self.client.get_guild(self.new_guild_id)
             task_clean_emojis = asyncio.create_task(self.clean_emojis())
@@ -50,8 +50,8 @@ class ServerCloner:
             if self.is_community:
                 await self.clone_forum_channels()
                 await self.clone_stage_channels()
-            print('> Server Cloned Successfully')
-            print('> Logging out')
+            print('> ✅ | Server Cloned Successfully')
+            print('> ↩️️ | Logging out')
             await self.client.close()
         self.client.run(self.token)
 
