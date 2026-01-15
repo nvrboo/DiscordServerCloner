@@ -37,6 +37,7 @@ class ServerCloner:
             task_clean_emojis.add_done_callback(_log_task_exc)
             task_clone_emojis.add_done_callback(_log_task_exc)
             await self.edit_guild_icon()
+            await self.edit_guild_banner()
             await self.disable_community()
             await self.clean_roles()
             await self.clone_roles()
