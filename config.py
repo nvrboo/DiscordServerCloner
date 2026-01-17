@@ -11,3 +11,24 @@ if original_guild_id is not None:
     original_guild_id = int(original_guild_id)
 if new_guild_id is not None:
     new_guild_id = int(new_guild_id)
+
+clone_options = {
+    'clean_emojis': False,
+    'clone_emojis': False,
+
+    'clean_roles': True,
+    'clone_roles': True,
+
+    'clean_channels': True,
+    'clone_categories': True,
+    'clone_text_channels': True,
+    'clone_voice_channels': True,
+    'clone_forum_channels': True,
+    'clone_stage_channels': True,
+
+    'set_icon': True,
+    'set_banner': True,
+    'edit_settings': True,
+    'enable_community': True,
+    'edit_guild_channel_settings': True,
+}
