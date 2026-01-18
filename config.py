@@ -20,11 +20,7 @@ clone_options = {
     'clone_roles': True,
 
     'clean_channels': True,
-    'clone_categories': True,
-    'clone_text_channels': True,
-    'clone_voice_channels': True,
-    'clone_forum_channels': True,
-    'clone_stage_channels': True,
+    'clone_channels': True,
 
     'set_icon': True,
     'set_banner': True,

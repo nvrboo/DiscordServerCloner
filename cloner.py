@@ -9,12 +9,13 @@ import config
 
 class ServerCloner:
 
-    def __init__(self, token: str, original_guild_id: int, new_guild_id: int, copy_interval: float = .7):
+    def __init__(self, token: str, original_guild_id: int, new_guild_id: int, cleaning_interval: float = .7, cloning_interval: float = .7, emoji_cloning_interval: float = 2):
         self.client = discord.Client()
         self.original_guild_id = original_guild_id
         self.new_guild_id = new_guild_id
-        self.copy_interval = copy_interval
-        self.emoji_copy_interval = copy_interval * 4
+        self.cleaning_interval = cleaning_interval
+        self.cloning_interval = cloning_interval
+        self.emoji_cloning_interval = emoji_cloning_interval
         self.token = token
         self.original_guild = None
         self.new_guild = None
@@ -60,25 +61,29 @@ class ServerCloner:
                 task_clone_emojis = asyncio.create_task(self.clone_emojis())
                 task_clone_emojis.add_done_callback(_log_task_exc)
                 tasks.append(task_clone_emojis)
-            if config.clone_options['clean_roles']:
-                task_clean_roles = asyncio.create_task(self.clean_roles())
-                task_clean_roles.add_done_callback(_log_task_exc)
-                tasks.append(task_clean_roles)
-            if config.clone_options['clone_roles']:
-                task_clean_channels = asyncio.create_task(self.clean_channels())
-                task_clean_channels.add_done_callback(_log_task_exc)
-                tasks.append(task_clean_channels)
             if config.clone_options['set_icon']:
                 await self.edit_guild_icon()
             if config.clone_options['set_banner']:
                 await self.edit_guild_banner()
+            if config.clone_options['clean_roles']:
+                if self.cleaning_interval >= 0.7:
+                    task_clean_roles = asyncio.create_task(self.clean_roles())
+                    task_clean_roles.add_done_callback(_log_task_exc)
+                    tasks.append(task_clean_roles)
+                else:
+                    await self.clean_roles()
+            if config.clone_options['clean_channels']:
+                if self.cleaning_interval >= 0.7:
+                    task_clean_channels = asyncio.create_task(self.clean_channels())
+                    task_clean_channels.add_done_callback(_log_task_exc)
+                    tasks.append(task_clean_channels)
+                else:
+                    await self.clean_channels()
             if config.clone_options['clone_roles']:
                 await self.clone_roles()
-            if config.clone_options['clone_categories']:
+            if config.clone_options['clone_channels']:
                 await self.clone_categories()
-            if config.clone_options['clone_text_channels']:
                 await self.clone_text_channels()
-            if config.clone_options['clone_voice_channels']:
                 await self.clone_voice_channels()
             if config.clone_options['edit_guild_channel_settings']:
                 await self.edit_guild_channel_settings()
@@ -86,9 +91,8 @@ class ServerCloner:
                 await self.enable_community()
                 await self.convert_channels_to_news()
             if self.is_community:
-                if config.clone_options['clone_forum_channels']:
+                if config.clone_options['clone_channels']:
                     await self.clone_forum_channels()
-                if config.clone_options['clone_stage_channels']:
                     await self.clone_stage_channels()
             if tasks:
                 await asyncio.gather(*tasks, return_exceptions=True)
@@ -103,7 +107,7 @@ class ServerCloner:
                 await self.client.close()
             except Exception as e:
                 pass
-        self.client.run(self.token, log_handler=None)
+        self.client.run(self.token)
 
     async def edit_guild_icon(self, retries: int = 5):
         success = False
@@ -208,8 +212,9 @@ class ServerCloner:
                 if not role.is_default() and not role.is_bot_managed() and not role.is_premium_subscriber() and not role.is_integration():
                     await role.delete()
                     print(f'- ❌ | ({i+1}/{len_objects}) Role deleted: {role.name}')
-                await asyncio.sleep(self.copy_interval)
+                await asyncio.sleep(self.cleaning_interval)
             except Exception as e:
+                print(e)
                 print(f'- ⚠️ | ({i+1}/{len_objects}) Failed to delete role: {role.name}')
 
     async def clone_roles(self):
@@ -222,18 +227,19 @@ class ServerCloner:
                                                                    hoist=role.hoist)
                     self.mirror_roles[role] = cloned_role
                     print(f'- ➕ | ({i+1}/{len(self.original_guild.roles)}) Role cloned: {cloned_role.name}')
-                    await asyncio.sleep(self.copy_interval)
+                    await asyncio.sleep(self.cloning_interval)
                 elif role.is_default():
                     await self.new_guild.default_role.edit(permissions=role.permissions)
                     print(f'- ➕ | ({i+1}/{len(self.original_guild.roles)}) Changed Permissions for Default Role')
-                    await asyncio.sleep(self.copy_interval)
+                    await asyncio.sleep(self.cloning_interval)
                 elif role.is_premium_subscriber():
                     for new_guild_role in self.new_guild.roles:
                         if new_guild_role.is_premium_subscriber():
                             await new_guild_role.edit(permissions=role.permissions)
                             print(f'- ➕ | ({i+1}/{len(self.original_guild.roles)}) Changed Permissions for Premium Subscriber Role')
-                            await asyncio.sleep(self.copy_interval)
+                            await asyncio.sleep(self.cloning_interval)
             except Exception as e:
+                print(e)
                 print(f'- ⚠️ | ({i+1}/{len(self.original_guild.roles)}) Failed to clone role: {role.name}')
 
     async def clean_channels(self):
@@ -241,11 +247,14 @@ class ServerCloner:
         len_objects = len(self.new_guild.channels)
         channels = self.new_guild.channels
         for i, channel in enumerate(channels):
+            start_time = datetime.datetime.now()
+
             try:
                 await channel.delete()
                 print(f'- ❌ | ({i+1}/{len_objects}) Channel deleted: {channel.name}')
-                await asyncio.sleep(self.copy_interval)
+                await asyncio.sleep(self.cleaning_interval)
             except Exception as e:
+                print(e)
                 print(f'- ⚠️ | ({i+1}/{len_objects}) Failed to delete channel: {channel.name}')
 
     async def clone_categories(self):
@@ -256,7 +265,7 @@ class ServerCloner:
                 cloned_category = await self.clone_category(category)
                 self.mirror_channels[category] = cloned_category
                 print(f'- ➕ | ({i+1}/{len(channels)}) Category cloned: {cloned_category.name}')
-                await asyncio.sleep(self.copy_interval)
+                await asyncio.sleep(self.cloning_interval)
             except Exception as e:
                 print(f'- ⚠️ | ({i+1}/{len(channels)}) Failed to clone category: {category.name}')
 
@@ -268,7 +277,7 @@ class ServerCloner:
                 cloned_channel = await self.clone_text_channel(channel)
                 self.mirror_channels[channel] = cloned_channel
                 print(f'- ➕ | ({i+1}/{len(channels)}) Text Channel cloned: {cloned_channel.name}')
-                await asyncio.sleep(self.copy_interval)
+                await asyncio.sleep(self.cloning_interval)
             except Exception as e:
                 print(f'- ⚠️ | ({i+1}/{len(channels)}) Failed to clone text channel: {channel.name}')
 
@@ -280,7 +289,7 @@ class ServerCloner:
                 cloned_channel = await self.clone_voice_channel(channel)
                 self.mirror_channels[channel] = cloned_channel
                 print(f'- ➕ | ({i+1}/{len(channels)}) Voice Channel cloned: {cloned_channel.name}')
-                await asyncio.sleep(self.copy_interval)
+                await asyncio.sleep(self.cloning_interval)
             except Exception as e:
                 print(f'- ⚠️ | ({i+1}/{len(channels)}) Failed to clone voice channel: {channel.name}')
 
@@ -292,8 +301,9 @@ class ServerCloner:
                 cloned_channel = await self.clone_forum_channel(channel)
                 self.mirror_channels[channel] = cloned_channel
                 print(f'- ➕ | ({i+1}/{len(channels)}) Forum Channel cloned: {cloned_channel.name}')
-                await asyncio.sleep(self.copy_interval)
+                await asyncio.sleep(self.cloning_interval)
             except Exception as e:
+                print(e)
                 print(f'- ⚠️ | ({i+1}/{len(channels)}) Failed to clone forum channel: {channel.name}')
 
     async def clone_stage_channels(self):
@@ -304,7 +314,7 @@ class ServerCloner:
                 cloned_channel = await self.clone_stage_channel(channel)
                 self.mirror_channels[channel] = cloned_channel
                 print(f'- ➕ | ({i+1}/{len(channels)}) Stage Channel cloned: {cloned_channel.name}')
-                await asyncio.sleep(self.copy_interval)
+                await asyncio.sleep(self.cloning_interval)
             except Exception as e:
                 print(f'- ⚠️ | ({i+1}/{len(channels)}) Failed to clone stage channel: {channel.name}')
 
@@ -320,6 +330,7 @@ class ServerCloner:
                 print(f'- ⚠️ | Failed to convert channel to news: {channel.name}')
 
     async def clone_category(self, category):
+        start_time = datetime.datetime.now()
         cloned_category = await self.new_guild.create_category(name=category.name, overwrites=category.overwrites)
         await self.__set_overwrites_for_channel(category, cloned_category)
         return cloned_category
@@ -362,7 +373,6 @@ class ServerCloner:
                                                                    slowmode_delay=channel.slowmode_delay,
                                                                    default_auto_archive_duration=channel.default_auto_archive_duration,
                                                                    default_thread_slowmode_delay=channel.default_thread_slowmode_delay,
-                                                                   nsfw=channel.is_nsfw(),
                                                                    **additional_kwargs)
         await self.__set_overwrites_for_channel(channel, cloned_channel)
         return cloned_channel
@@ -383,7 +393,7 @@ class ServerCloner:
             try:
                 await emoji.delete()
                 print(f'- ❌ | ({i+1}/{len(self.new_guild.emojis)}) Emoji deleted: {emoji.name}')
-                await asyncio.sleep(self.emoji_copy_interval)
+                await asyncio.sleep(self.emoji_cloning_interval)
             except Exception as e:
                 print(f'- ⚠️ | ({i+1}/{len(self.new_guild.emojis)}) Failed to delete emoji: {emoji.name}')
 
@@ -403,28 +413,46 @@ class ServerCloner:
                             continue
                 else:
                     return
-                await asyncio.sleep(self.emoji_copy_interval)
+                await asyncio.sleep(self.emoji_cloning_interval)
             except Exception as e:
                 print(f'- ⚠️ | ({i+1}/{len_objects}) Failed to clone emoji: {emoji.name}')
 
     def get_estimated_cloning_time(self):
-        roles_deletion_time = len(self.new_guild.roles) * self.copy_interval if config.clone_options['clean_roles'] else 0
-        roles_cloning_time = len(self.original_guild.roles) * self.copy_interval if config.clone_options['clone_roles'] else 0
-        channels_deletion_time = len(self.new_guild.channels) * self.copy_interval if config.clone_options['clean_channels'] else 0
-        categories_cloning_time = len(self.original_guild.categories) * self.copy_interval if config.clone_options['clone_categories'] else 0
-        text_channels_cloning_time = len(self.original_guild.text_channels) * self.copy_interval if config.clone_options['clone_text_channels'] else 0
-        voice_channels_cloning_time = len(self.original_guild.voice_channels) * self.copy_interval if config.clone_options['clone_voice_channels'] else 0
-        forum_channels_cloning_time = len(self.original_guild.forums) * self.copy_interval if config.clone_options['clone_forum_channels'] and self.is_community else 0
-        stage_channels_cloning_time = len(self.original_guild.stage_channels) * self.copy_interval if config.clone_options['clone_stage_channels'] and self.is_community else 0
-        all_channels_cloning_time = categories_cloning_time + text_channels_cloning_time + voice_channels_cloning_time + forum_channels_cloning_time + stage_channels_cloning_time
-        emoji_deletion_time = len(self.new_guild.emojis) * self.emoji_copy_interval if config.clone_options['clean_emojis'] else 0
-        emoji_cloning_time = len(self.original_guild.emojis) * self.emoji_copy_interval if config.clone_options['clone_emojis'] else 0
+        cloning_time_per_channel = []
+
+        if config.clone_options['clone_channels']:
+            for i, channel in enumerate(self.original_guild.channels):
+                cloning_time_per_channel.append(self.cloning_interval + 0.4)
+                for role in self.original_guild.roles:
+                    if not all([i is None for i in
+                            ServerCloner.__permissions_to_dict(channel.overwrites_for(role)).values()]):
+                        cloning_time_per_channel[i] += 0.16
+
+        cloning_time_per_role = []
+        if config.clone_options['clone_roles']:
+            for role in self.original_guild.roles:
+                if not role.is_bot_managed() and not role.is_integration():
+                    cloning_time_per_role.append(self.cloning_interval + 0.3)
+
+        roles_deletion_time = len(self.new_guild.roles) * (self.cloning_interval + 0.25) if config.clone_options['clean_roles'] else 0
+        roles_cloning_time = sum(cloning_time_per_role) if config.clone_options['clone_roles'] else 0
+        channels_deletion_time = len(self.new_guild.channels) * (self.cloning_interval + 0.25) if config.clone_options['clean_channels'] else 0
+        channels_cloning_time = sum(cloning_time_per_channel) if config.clone_options['clone_channels'] else 0
+        emoji_deletion_time = len(self.new_guild.emojis) * (self.emoji_cloning_interval + 0.25) if config.clone_options['clean_emojis'] else 0
+        emoji_cloning_time = len(self.original_guild.emojis) * (self.emoji_cloning_interval + 0.3) if config.clone_options['clone_emojis'] else 0
 
         full_emoji_processing_time = emoji_cloning_time if emoji_cloning_time > emoji_deletion_time else emoji_deletion_time
-        full_roles_and_channels_deletion_processing_time = roles_deletion_time + channels_deletion_time
-        full_roles_and_channels_cloning_processing_time = roles_cloning_time + all_channels_cloning_time
+        full_roles_and_channels_cloning_processing_time = roles_cloning_time + channels_cloning_time
 
-        return int(max(full_emoji_processing_time, full_roles_and_channels_deletion_processing_time, full_roles_and_channels_cloning_processing_time))
+        l = [full_emoji_processing_time]
+
+        if self.cleaning_interval < .7:
+            full_roles_and_channels_cloning_processing_time += roles_deletion_time + channels_deletion_time
+            l.append(full_roles_and_channels_cloning_processing_time)
+        else:
+            l += [full_roles_and_channels_cloning_processing_time, roles_deletion_time, channels_deletion_time]
+
+        return int(max(l))
 
     def __get_channel_category(self, channel):
         if channel.category is None:
@@ -439,7 +467,9 @@ class ServerCloner:
                 continue
             if not role.is_default() and not role.is_bot_managed() and not role.is_premium_subscriber() and not role.is_integration():
                 overwrite = original_channel.overwrites_for(role)
-                new_guild_role = self.mirror_roles[role]
+                new_guild_role = self.mirror_roles.get(role)
+                if new_guild_role is None:
+                    continue
                 await cloned_channel.set_permissions(new_guild_role, overwrite=overwrite)
             elif role.is_default():
                 overwrite = original_channel.overwrites_for(self.original_guild.default_role)
