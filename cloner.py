@@ -1,5 +1,6 @@
 import asyncio
 import datetime
+import logging
 from unicodedata import mirrored
 
 import discord
@@ -30,7 +31,7 @@ class ServerCloner:
         async def on_ready():
             print()
             print()
-            print(f'> 👤 | Logged in as {self.client.user}')
+            print(f'> 👤 | Logged in')
             self.original_guild = self.client.get_guild(self.original_guild_id)
             self.new_guild = self.client.get_guild(self.new_guild_id)
             self.is_community = self.new_guild.rules_channel is not None and self.new_guild.public_updates_channel is not None
@@ -107,7 +108,7 @@ class ServerCloner:
                 await self.client.close()
             except Exception as e:
                 pass
-        self.client.run(self.token)
+        self.client.run(self.token, log_handler=None)
 
     async def edit_guild_icon(self, retries: int = 5):
         success = False
@@ -214,7 +215,6 @@ class ServerCloner:
                     print(f'- ❌ | ({i+1}/{len_objects}) Role deleted: {role.name}')
                 await asyncio.sleep(self.cleaning_interval)
             except Exception as e:
-                print(e)
                 print(f'- ⚠️ | ({i+1}/{len_objects}) Failed to delete role: {role.name}')
 
     async def clone_roles(self):
@@ -239,7 +239,6 @@ class ServerCloner:
                             print(f'- ➕ | ({i+1}/{len(self.original_guild.roles)}) Changed Permissions for Premium Subscriber Role')
                             await asyncio.sleep(self.cloning_interval)
             except Exception as e:
-                print(e)
                 print(f'- ⚠️ | ({i+1}/{len(self.original_guild.roles)}) Failed to clone role: {role.name}')
 
     async def clean_channels(self):
@@ -254,7 +253,6 @@ class ServerCloner:
                 print(f'- ❌ | ({i+1}/{len_objects}) Channel deleted: {channel.name}')
                 await asyncio.sleep(self.cleaning_interval)
             except Exception as e:
-                print(e)
                 print(f'- ⚠️ | ({i+1}/{len_objects}) Failed to delete channel: {channel.name}')
 
     async def clone_categories(self):
@@ -303,7 +301,6 @@ class ServerCloner:
                 print(f'- ➕ | ({i+1}/{len(channels)}) Forum Channel cloned: {cloned_channel.name}')
                 await asyncio.sleep(self.cloning_interval)
             except Exception as e:
-                print(e)
                 print(f'- ⚠️ | ({i+1}/{len(channels)}) Failed to clone forum channel: {channel.name}')
 
     async def clone_stage_channels(self):
@@ -330,9 +327,9 @@ class ServerCloner:
                 print(f'- ⚠️ | Failed to convert channel to news: {channel.name}')
 
     async def clone_category(self, category):
-        start_time = datetime.datetime.now()
         cloned_category = await self.new_guild.create_category(name=category.name, overwrites=category.overwrites)
-        await self.__set_overwrites_for_channel(category, cloned_category)
+        if config.clone_options['clone_roles']:
+            await self.__set_overwrites_for_channel(category, cloned_category)
         return cloned_category
 
     async def clone_text_channel(self, channel):
@@ -343,7 +340,8 @@ class ServerCloner:
                                                                    slowmode_delay=channel.slowmode_delay,
                                                                    default_auto_archive_duration=channel.default_auto_archive_duration,
                                                                    default_thread_slowmode_delay=channel.default_thread_slowmode_delay)
-        await self.__set_overwrites_for_channel(channel, cloned_channel)
+        if config.clone_options['clone_roles']:
+            await self.__set_overwrites_for_channel(channel, cloned_channel)
         return cloned_channel
 
     async def clone_voice_channel(self, channel):
@@ -353,7 +351,8 @@ class ServerCloner:
                                                                    bitrate=channel.bitrate if channel.bitrate <= 96000 else 96000,
                                                                    user_limit=channel.user_limit, rtc_region=channel.rtc_region,
                                                                    video_quality_mode=channel.video_quality_mode)
-        await self.__set_overwrites_for_channel(channel, cloned_channel)
+        if config.clone_options['clone_roles']:
+            await self.__set_overwrites_for_channel(channel, cloned_channel)
         return cloned_channel
 
     async def clone_forum_channel(self, channel):
@@ -361,12 +360,17 @@ class ServerCloner:
         additional_kwargs = {}
         if channel.default_sort_order is not None:
             additional_kwargs['default_sort_order'] = channel.default_sort_order
-        if channel.default_reaction_emoji is not None:
+        if channel.default_reaction_emoji is not None and not channel.default_reaction_emoji.is_custom_emoji():
             additional_kwargs['default_reaction_emoji'] = channel.default_reaction_emoji
         if channel.default_layout is not None:
             additional_kwargs['default_layout'] = channel.default_layout
         if channel.available_tags is not None:
-            additional_kwargs['available_tags'] = channel.available_tags
+            custom_emojis = False
+            for tag in channel.available_tags:
+                if tag.emoji.is_custom_emoji():
+                    custom_emojis = True
+            if not custom_emojis:
+                additional_kwargs['available_tags'] = channel.available_tags
         cloned_channel = await self.new_guild.create_forum(channel.name, category=category,
                                                                    position=channel.position,
                                                                    topic=channel.topic,
@@ -374,7 +378,8 @@ class ServerCloner:
                                                                    default_auto_archive_duration=channel.default_auto_archive_duration,
                                                                    default_thread_slowmode_delay=channel.default_thread_slowmode_delay,
                                                                    **additional_kwargs)
-        await self.__set_overwrites_for_channel(channel, cloned_channel)
+        if config.clone_options['clone_roles']:
+            await self.__set_overwrites_for_channel(channel, cloned_channel)
         return cloned_channel
 
     async def clone_stage_channel(self, channel):
@@ -384,7 +389,8 @@ class ServerCloner:
                                                                    bitrate=channel.bitrate if channel.bitrate <= 96000 else 96000,
                                                                    user_limit=channel.user_limit, rtc_region=channel.rtc_region,
                                                                    video_quality_mode=channel.video_quality_mode)
-        await self.__set_overwrites_for_channel(channel, cloned_channel)
+        if config.clone_options['clone_roles']:
+            await self.__set_overwrites_for_channel(channel, cloned_channel)
         return cloned_channel
 
     async def clean_emojis(self):
