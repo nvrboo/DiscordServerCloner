@@ -18,7 +18,7 @@
 ✔ Safe to use (with default settings)
 ```
 
-```
+```sh-session
 ✔ Clone Channels
 ✔ Clone Roles
 ✔ Clone Emojis
